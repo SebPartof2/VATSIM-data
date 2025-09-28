@@ -1,0 +1,6 @@
+[
+  { "code": "ZBW", "name": "Boston ATCT" },
+  { "code": "ZLA", "name": "Los Angeles ARTCC" },
+  { "code": "ZDV", "name": "Denver ARTCC" },
+  { "code": "ZME", "name": "Memphis ARTCC" }
+]

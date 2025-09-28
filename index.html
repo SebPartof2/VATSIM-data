@@ -14,11 +14,15 @@
       button{background:#1f6feb;color:white;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
       button[disabled]{opacity:0.6;cursor:default}
       .muted{color:#99a8c6;font-size:13px}
-      ul.list{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
-      li.item{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);display:flex;flex-direction:column;gap:6px}
-      .callsign{font-weight:700;color:#fff}
-      .position{font-size:13px;color:#aec6e8}
-      .meta{font-size:12px;color:#7f98bf}
+  ul.list{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px}
+  li.item{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;gap:8px}
+  .left{flex:1;display:flex;flex-direction:column;gap:6px}
+  .left .radio{font-size:16px;font-weight:700;color:#fff}
+  .left .facility{font-size:13px;color:#aec6e8}
+  .left .realname{font-size:12px;color:#9fb0d6}
+  .right{width:140px;flex:0 0 140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+  .freq{font-size:18px;font-weight:700;color:#9fc3ff}
+  .callsign-small{font-size:12px;color:#9fb0d6}
       .error{color:#ffb4b4;background:#3b0f0f;padding:10px;border-radius:8px}
       .loading{color:#cde3ff}
       footer{margin-top:12px;font-size:12px;color:#86a0cc}
@@ -34,6 +38,16 @@
         <button id="refresh">Refresh</button>
         <div id="status" class="muted">Updated: —</div>
       </div>
+
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <label for="artccFilter" class="muted">Filter ARTCC:</label>
+        <select id="artccFilter">
+          <option value="ALL">All ARTCCs</option>
+        </select>
+        <div id="artccTitle" style="margin-left:auto;font-weight:700;color:#cfe4ff"></div>
+      </div>
+
+      <div id="artccTiles" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
 
       <div id="message" aria-live="polite"></div>
       <ul id="list" class="list" aria-live="polite"></ul>
@@ -86,7 +100,8 @@
           const controllers = Array.isArray(data.controllers) ? data.controllers : [];
 
           // Build list of primary positions
-          const items = [];
+          window.__VATSIM_items = [];
+          window.__VATSIM_artccs = {}; // map artccId -> {code, displayName}
           for(const c of controllers){
             const positions = Array.isArray(c.positions) ? c.positions : [];
             // primary may be flagged by isPrimary or by matching primaryPositionId
@@ -98,38 +113,122 @@
             const facilityName = primary.facilityName || c.primaryFacilityId || '';
             const radioName = primary.radioName || '';
             const frequency = typeof primary.frequency === 'number' ? primary.frequency : (primary.frequency ? Number(primary.frequency) : null);
-            items.push({callsign, positionName, facilityName, radioName, frequency});
+            const realName = (c.vatsimData && c.vatsimData.realName) || '';
+            window.__VATSIM_items.push({callsign, positionName, facilityName, radioName, frequency, realName, artccId: c.artccId});
+            // remember artcc display name by first observed facilityName
+            if(c.artccId && !window.__VATSIM_artccs[c.artccId]){
+              // try to get a friendly name from primary position or facilityName
+              window.__VATSIM_artccs[c.artccId] = {
+                code: c.artccId,
+                displayName: (primary.facilityName || `${c.artccId} ARTCC`)
+              };
+            }
           }
 
-          if(items.length === 0){
+          if(window.__VATSIM_items.length === 0){
             showMessage('No primary positions found.', 'muted');
           } else {
             showMessage('', '');
-            // sort alphabetically by callsign
-            items.sort((a,b)=>a.callsign.localeCompare(b.callsign));
-            for(const it of items){
-              const li = document.createElement('li');
-              li.className = 'item';
-              const cs = document.createElement('div'); cs.className = 'callsign'; cs.textContent = it.callsign;
-              const pos = document.createElement('div'); pos.className = 'position'; pos.textContent = it.positionName;
-              const fac = document.createElement('div'); fac.className = 'meta'; fac.textContent = it.facilityName;
-              const radio = document.createElement('div'); radio.className = 'meta'; radio.textContent = it.radioName;
-              const freq = document.createElement('div'); freq.className = 'meta';
-              if(it.frequency){
-                // frequency is given as an integer in Hz (e.g. 121700000). Convert to MHz with 3 decimals where sensible
-                const mhz = (it.frequency / 1e6).toFixed(3).replace(/\.([0-9]*?)0+$/,'.$1').replace(/\.$/, '');
-                freq.textContent = `${mhz} MHz`;
-              } else {
-                freq.textContent = '';
-              }
-
-              li.appendChild(cs);
-              li.appendChild(pos);
-              if(fac.textContent) li.appendChild(fac);
-              if(radio.textContent) li.appendChild(radio);
-              if(freq.textContent) li.appendChild(freq);
-              listEl.appendChild(li);
+            // populate ARTCC filter select
+            const artccSelect = document.getElementById('artccFilter');
+            // clear existing (keep All)
+            Array.from(artccSelect.querySelectorAll('option[value^="ART"]')).forEach(o=>o.remove());
+            const artccEntries = Object.values(window.__VATSIM_artccs).sort((a,b)=>a.code.localeCompare(b.code));
+            for(const a of artccEntries){
+              const opt = document.createElement('option'); opt.value = a.code; opt.textContent = `${a.displayName} - ${a.code}`;
+              artccSelect.appendChild(opt);
             }
+
+            // try to load artccs.json (editable config)
+            try{
+              const cfgRes = await fetch('/artccs.json');
+              if(cfgRes.ok){
+                const cfg = await cfgRes.json();
+                if(Array.isArray(cfg) && cfg.length){
+                  // render tiles using config order
+                  renderArtccTiles(cfg.map(x=>({code:x.code,name:x.name})));
+                } else {
+                  renderArtccTiles(artccEntries.map(a=>({code:a.code,name:a.displayName})));
+                }
+              } else {
+                renderArtccTiles(artccEntries.map(a=>({code:a.code,name:a.displayName})));
+              }
+            }catch(e){
+              renderArtccTiles(artccEntries.map(a=>({code:a.code,name:a.displayName})));
+            }
+
+            function renderArtccTiles(list){
+              const container = document.getElementById('artccTiles');
+              container.innerHTML = '';
+              for(const a of list){
+                const btn = document.createElement('button');
+                btn.textContent = `${a.name} - ${a.code}`;
+                btn.dataset.code = a.code;
+                btn.style.background = 'transparent';
+                btn.style.border = '1px solid rgba(255,255,255,0.06)';
+                btn.style.color = 'inherit';
+                btn.style.padding = '6px 10px';
+                btn.style.borderRadius = '8px';
+                btn.style.cursor = 'pointer';
+                btn.addEventListener('click', ()=>{
+                  // set select and dispatch change
+                  artccSelect.value = a.code;
+                  artccSelect.dispatchEvent(new Event('change'));
+                  // visually mark selected
+                  Array.from(container.children).forEach(c=>c.style.opacity = '0.6');
+                  btn.style.opacity = '1';
+                });
+                container.appendChild(btn);
+              }
+            }
+
+            // sort alphabetically by callsign
+            window.__VATSIM_items.sort((a,b)=>a.callsign.localeCompare(b.callsign));
+            function renderItems(itemsToRender){
+              listEl.innerHTML = '';
+              for(const it of itemsToRender){
+                const li = document.createElement('li');
+                li.className = 'item';
+                const left = document.createElement('div'); left.className = 'left';
+                  const radio = document.createElement('div'); radio.className = 'radio'; radio.textContent = it.radioName || it.positionName || '';
+                  const facility = document.createElement('div'); facility.className = 'facility'; facility.textContent = it.facilityName || '';
+                  const real = document.createElement('div'); real.className = 'realname'; real.textContent = it.realName || '';
+                const right = document.createElement('div'); right.className = 'right';
+                const freq = document.createElement('div'); freq.className = 'freq';
+                if(it.frequency){
+                  const mhz = (it.frequency / 1e6).toFixed(3).replace(/\.([0-9]*?)0+$/,'.$1').replace(/\.$/, '');
+                  freq.textContent = `${mhz} MHz`;
+                } else {
+                  freq.textContent = '';
+                }
+                left.appendChild(radio);
+                if(facility.textContent) left.appendChild(facility);
+                if(real.textContent) left.appendChild(real);
+                right.appendChild(freq);
+                const csSmall = document.createElement('div'); csSmall.className = 'callsign-small'; csSmall.textContent = it.callsign || '';
+                if(csSmall.textContent) right.appendChild(csSmall);
+                li.appendChild(left);
+                li.appendChild(right);
+                listEl.appendChild(li);
+              }
+            }
+
+            // initial render = all items
+            renderItems(window.__VATSIM_items);
+            // hook filter change
+            const artccTitle = document.getElementById('artccTitle');
+            document.getElementById('artccFilter').addEventListener('change', (e)=>{
+              const val = e.target.value;
+              if(val === 'ALL'){
+                artccTitle.textContent = '';
+                renderItems(window.__VATSIM_items);
+                return;
+              }
+              const matching = window.__VATSIM_items.filter(i=>i.artccId === val);
+              const meta = window.__VATSIM_artccs[val] || {code: val, displayName: val};
+              artccTitle.textContent = `${meta.displayName} - ${meta.code}`;
+              renderItems(matching);
+            });
           }
 
         }catch(err){
