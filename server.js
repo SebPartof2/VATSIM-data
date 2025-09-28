@@ -25,6 +25,22 @@ app.get('/proxy/controllers.json', async (req, res) => {
   }
 });
 
+// Allow saving overrides.json from the in-page editor (development only)
+app.use(express.json({ limit: '100kb' }));
+app.post('/overrides', async (req, res) => {
+  try {
+    const overrides = req.body;
+    if(!overrides || typeof overrides !== 'object') return res.status(400).json({ error: 'Invalid payload' });
+    const fs = require('fs');
+    const p = path.resolve(__dirname, 'overrides.json');
+    fs.writeFileSync(p, JSON.stringify(overrides, null, 2), 'utf8');
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Save overrides error', err);
+    res.status(500).json({ error: 'Could not save overrides', message: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Static server + proxy listening on http://localhost:${PORT}`);
 });

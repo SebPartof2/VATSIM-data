@@ -1,5 +1,6 @@
 {
   "overrides": {
+    "Observer": "OBS",
     "Student1": "S1",
     "Student2": "S2",
     "Student3": "S3",

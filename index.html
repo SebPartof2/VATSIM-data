@@ -19,7 +19,9 @@
   .left{flex:1;display:flex;flex-direction:column;gap:6px}
   .left .radio{font-size:16px;font-weight:700;color:#fff}
   .left .facility{font-size:13px;color:#aec6e8}
-  .left .realname{font-size:12px;color:#9fb0d6}
+    .left .realname{font-size:12px;color:#9fb0d6}
+  .role-badge{display:inline-block;margin-left:8px;padding:2px 6px;background:rgba(159,195,255,0.12);border-radius:6px;color:#9fc3ff;font-weight:700;font-size:11px}
+  li.item.observer{opacity:0.55;font-style:italic}
   .right{width:140px;flex:0 0 140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
   .freq{font-size:18px;font-weight:700;color:#9fc3ff}
   .callsign-small{font-size:12px;color:#9fb0d6}
@@ -105,12 +107,15 @@
             if(!primary) continue;
 
             const callsign = (c.vatsimData && c.vatsimData.callsign) || primary.defaultCallsign || '';
-            const positionName = primary.positionName || primary.radioName || '';
-            const facilityName = primary.facilityName || c.primaryFacilityId || '';
+            // never use positionName; prefer radioName
             const radioName = primary.radioName || '';
+            const facilityName = primary.facilityName || c.primaryFacilityId || '';
             const frequency = typeof primary.frequency === 'number' ? primary.frequency : (primary.frequency ? Number(primary.frequency) : null);
             const realName = (c.vatsimData && c.vatsimData.realName) || '';
-            window.__VATSIM_items.push({callsign, positionName, facilityName, radioName, frequency, realName, artccId: c.artccId});
+            // capture requestedRating from a few possible feed fields (different feeds use different names)
+            let requestedRatingRaw = primary.requestedRating || primary.requested_rating || primary.requestedRatingLevel || primary.requested_rating_level || primary.rating || (c.vatsimData && (c.vatsimData.requestedRating || c.vatsimData.rating)) || '';
+            const requestedRating = requestedRatingRaw != null ? String(requestedRatingRaw).trim() : '';
+            window.__VATSIM_items.push({callsign, facilityName, radioName, frequency, realName, requestedRating, artccId: c.artccId});
             // remember artcc display name by first observed facilityName
             if(c.artccId && !window.__VATSIM_artccs[c.artccId]){
               // try to get a friendly name from primary position or facilityName
@@ -145,7 +150,12 @@
               const ovRes = await fetch('/overrides.json');
               if(ovRes.ok){
                 const ov = await ovRes.json();
-                if(ov && typeof ov.overrides === 'object') overrides = ov.overrides;
+                if(ov && typeof ov.overrides === 'object'){
+                  // normalize keys to uppercase for case-insensitive lookup
+                  for(const k of Object.keys(ov.overrides)){
+                    overrides[k.toUpperCase()] = ov.overrides[k];
+                  }
+                }
               }
             }catch(e){ /* ignore */ }
 
@@ -209,28 +219,62 @@
             window.__VATSIM_items.sort((a,b)=>a.callsign.localeCompare(b.callsign));
             function renderItems(itemsToRender){
               listEl.innerHTML = '';
+              const normal = [];
+              const observers = [];
               for(const it of itemsToRender){
+                // resolve abbreviation: first check overrides by callsign (case-insensitive), then feed
+                let roleAbbr = '';
+                let roleSource = '';
+                try{
+                  const csKey = (it.callsign || '').toUpperCase();
+                  if(csKey && overrides[csKey]){
+                    roleAbbr = String(overrides[csKey]).toUpperCase();
+                    roleSource = 'override';
+                  } else {
+                    for(const ok of Object.keys(overrides)){
+                      if(!ok) continue;
+                      if(csKey.startsWith(ok) || csKey.endsWith(ok) || csKey.includes(ok)){
+                        roleAbbr = String(overrides[ok]).toUpperCase();
+                        roleSource = 'override';
+                        break;
+                      }
+                      const tokens = csKey.split(/[-_\/\s]/).map(t=>t.trim()).filter(Boolean);
+                      if(tokens.includes(ok)){
+                        roleAbbr = String(overrides[ok]).toUpperCase();
+                        roleSource = 'override';
+                        break;
+                      }
+                    }
+                  }
+                  if(!roleAbbr && it.requestedRating){
+                    roleAbbr = String(it.requestedRating).toUpperCase();
+                    roleSource = 'feed';
+                  }
+                }catch(e){ roleAbbr = ''; }
+
+                // push into separate arrays so we can render observers last
+                const roleNorm = (roleAbbr || '').toString().toUpperCase().trim();
+                if(roleNorm.startsWith('OBS')){
+                  observers.push({it, roleAbbr: roleNorm, roleSource});
+                } else {
+                  normal.push({it, roleAbbr: roleNorm, roleSource});
+                }
+              }
+
+              function buildLi(itemObj){
+                const {it, roleAbbr, roleSource} = itemObj;
                 const li = document.createElement('li');
                 li.className = 'item';
                 const left = document.createElement('div'); left.className = 'left';
-                  const radio = document.createElement('div'); radio.className = 'radio'; radio.textContent = it.radioName || it.positionName || '';
+                  const radio = document.createElement('div'); radio.className = 'radio'; radio.textContent = it.radioName || '';
                   const facility = document.createElement('div'); facility.className = 'facility'; facility.textContent = it.facilityName || '';
-                  // resolve abbreviation: first check overrides by callsign (case-insensitive), then fall back to any role in the feed
-                  let roleAbbr = '';
-                  try{
-                    const csKey = (it.callsign || '').toUpperCase();
-                    if(csKey && overrides[csKey]) roleAbbr = overrides[csKey];
-                    else if(it.positionName){
-                      // attempt to extract short role from positionName, e.g. "S1", "APP", etc. Simple heuristic: look for a token like S1 or APP
-                      const m = (it.positionName.match(/\b([A-Z]{2,4}\d?|S\d)\b/i) || []);
-                      if(m[1]) roleAbbr = m[1].toUpperCase();
-                    }
-                  }catch(e){ roleAbbr = ''; }
-                  const real = document.createElement('div'); real.className = 'realname'; real.textContent = it.realName ? (roleAbbr ? `${it.realName} - ${roleAbbr}` : it.realName) : '';
+                  const real = document.createElement('div'); real.className = 'realname'; real.textContent = it.realName || '';
+                  // create role badge
+                  const roleBadge = document.createElement('span'); roleBadge.className = 'role-badge'; roleBadge.textContent = roleAbbr || '';
+                  if(roleSource) roleBadge.title = roleSource === 'override' ? 'override' : 'feed';
                 const right = document.createElement('div'); right.className = 'right';
                 const freq = document.createElement('div'); freq.className = 'freq';
                 if(it.frequency){
-                  // Show frequency in MHz to thousandths (3 decimal places)
                   const mhz = (it.frequency / 1e6).toFixed(3);
                   freq.textContent = `${mhz} MHz`;
                 } else {
@@ -242,8 +286,27 @@
                 right.appendChild(freq);
                 const csSmall = document.createElement('div'); csSmall.className = 'callsign-small'; csSmall.textContent = it.callsign || '';
                 if(csSmall.textContent) right.appendChild(csSmall);
+                if(roleBadge.textContent){
+                  if(real.textContent){
+                    if(!real.contains(roleBadge)) real.appendChild(roleBadge);
+                  } else {
+                    roleBadge.style.marginTop = '6px';
+                    right.appendChild(roleBadge);
+                  }
+                }
                 li.appendChild(left);
                 li.appendChild(right);
+                return li;
+              }
+
+              // render normal items first
+              for(const o of normal){
+                listEl.appendChild(buildLi(o));
+              }
+              // then render observers with muted italic styling
+              for(const o of observers){
+                const li = buildLi(o);
+                li.classList.add('observer');
                 listEl.appendChild(li);
               }
             }
@@ -268,5 +331,6 @@
       // initial load
       load();
     </script>
+    <!-- Overrides editor removed per user request -->
   </body>
 </html>
