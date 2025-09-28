@@ -26,3 +26,11 @@ npm start
 Notes
 - The server serves static files from the repository root and exposes `/proxy/controllers.json` which proxies the live feed.
 - `index.html` fetches the feed directly; if your browser still runs into CORS when fetching the original URL, you can manually edit the `URL` constant in `index.html` to `/proxy/controllers.json` to use the proxy.
+
+- `artccs.json` is an optional config used to render ARTCC tiles. Each entry can be:
+
+```json
+{ "code": "ZBW", "name": "Boston ARTCC", "aliases": ["BOS", "ZBW1"] }
+```
+
+The UI will show the primary `code` on the tile but will filter items matching the primary code or any `aliases`.

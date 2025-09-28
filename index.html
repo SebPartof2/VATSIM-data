@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>VATSIM Controllers — Primary Positions</title>
+    <title>VATUSA - vNAS Controllers</title>
     <style>
       :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;margin:0}
       body{background:#0b1220;color:#e6eef8;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:24px}
@@ -31,8 +31,8 @@
   </head>
   <body>
     <main class="card" role="main">
-      <h1>VATSIM Controllers — Primary Positions</h1>
-      <p class="lead">Showing only primary positions from the live controllers feed.</p>
+      <h1>VATUSA - vNAS Controllers</h1>
+      <p class="lead">Shows VATUSA controllers connected to the vNAS Network.</p>
 
       <div class="controls">
         <button id="refresh">Refresh</button>
@@ -133,12 +133,13 @@
               if(cfgRes.ok){
                 const cfg = await cfgRes.json();
                 if(Array.isArray(cfg) && cfg.length){
-                  cfgList = cfg.map(x=>({code:x.code,name:x.name}));
+                  // preserve aliases if present (optional `aliases` array)
+                  cfgList = cfg.map(x=>({code:x.code,name:x.name, aliases: Array.isArray(x.aliases) ? x.aliases : []}));
                 }
               }
             }catch(e){ /* ignore and fallback */ }
 
-            const tilesList = cfgList || artccEntries.map(a=>({code:a.code,name:a.displayName}));
+            const tilesList = cfgList || artccEntries.map(a=>({code:a.code,name:a.displayName, aliases: []}));
             function renderArtccTiles(list){
               const container = document.getElementById('artccTiles');
               container.innerHTML = '';
@@ -164,7 +165,9 @@
                 btn.addEventListener('click', ()=>{
                   // set title using config name + code
                   document.getElementById('artccTitle').textContent = `${a.name} - ${a.code}`;
-                  const matching = window.__VATSIM_items.filter(i=>i.artccId === a.code);
+                  // support filtering by primary code OR any aliases provided in the config
+                  const codes = [a.code].concat(Array.isArray(a.aliases) ? a.aliases : []);
+                  const matching = window.__VATSIM_items.filter(i=> codes.includes(i.artccId));
                   renderItems(matching);
                   // visually mark selected
                   Array.from(container.children).forEach(c=>c.style.opacity = '0.6');
