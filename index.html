@@ -40,10 +40,6 @@
       </div>
 
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <label for="artccFilter" class="muted">Filter ARTCC:</label>
-        <select id="artccFilter">
-          <option value="ALL">All ARTCCs</option>
-        </select>
         <div id="artccTitle" style="margin-left:auto;font-weight:700;color:#cfe4ff"></div>
       </div>
 
@@ -129,51 +125,47 @@
             showMessage('No primary positions found.', 'muted');
           } else {
             showMessage('', '');
-            // populate ARTCC filter select
-            const artccSelect = document.getElementById('artccFilter');
-            // clear existing (keep All)
-            Array.from(artccSelect.querySelectorAll('option[value^="ART"]')).forEach(o=>o.remove());
             const artccEntries = Object.values(window.__VATSIM_artccs).sort((a,b)=>a.code.localeCompare(b.code));
-            for(const a of artccEntries){
-              const opt = document.createElement('option'); opt.value = a.code; opt.textContent = `${a.displayName} - ${a.code}`;
-              artccSelect.appendChild(opt);
-            }
-
             // try to load artccs.json (editable config)
+            let cfgList = null;
             try{
               const cfgRes = await fetch('/artccs.json');
               if(cfgRes.ok){
                 const cfg = await cfgRes.json();
                 if(Array.isArray(cfg) && cfg.length){
-                  // render tiles using config order
-                  renderArtccTiles(cfg.map(x=>({code:x.code,name:x.name})));
-                } else {
-                  renderArtccTiles(artccEntries.map(a=>({code:a.code,name:a.displayName})));
+                  cfgList = cfg.map(x=>({code:x.code,name:x.name}));
                 }
-              } else {
-                renderArtccTiles(artccEntries.map(a=>({code:a.code,name:a.displayName})));
               }
-            }catch(e){
-              renderArtccTiles(artccEntries.map(a=>({code:a.code,name:a.displayName})));
-            }
+            }catch(e){ /* ignore and fallback */ }
 
+            const tilesList = cfgList || artccEntries.map(a=>({code:a.code,name:a.displayName}));
             function renderArtccTiles(list){
               const container = document.getElementById('artccTiles');
               container.innerHTML = '';
+              // add an ALL tile
+              const allBtn = document.createElement('button');
+              allBtn.textContent = 'ALL';
+              allBtn.dataset.code = 'ALL';
+              styleTile(allBtn);
+              allBtn.addEventListener('click', ()=>{
+                document.getElementById('artccTitle').textContent = 'United States NAS';
+                renderItems(window.__VATSIM_items);
+                Array.from(container.children).forEach(c=>c.style.opacity = '0.6');
+                allBtn.style.opacity = '1';
+              });
+              container.appendChild(allBtn);
+
               for(const a of list){
                 const btn = document.createElement('button');
-                btn.textContent = `${a.name} - ${a.code}`;
+                // show only the code on the tile
+                btn.textContent = a.code;
                 btn.dataset.code = a.code;
-                btn.style.background = 'transparent';
-                btn.style.border = '1px solid rgba(255,255,255,0.06)';
-                btn.style.color = 'inherit';
-                btn.style.padding = '6px 10px';
-                btn.style.borderRadius = '8px';
-                btn.style.cursor = 'pointer';
+                styleTile(btn);
                 btn.addEventListener('click', ()=>{
-                  // set select and dispatch change
-                  artccSelect.value = a.code;
-                  artccSelect.dispatchEvent(new Event('change'));
+                  // set title using config name + code
+                  document.getElementById('artccTitle').textContent = `${a.name} - ${a.code}`;
+                  const matching = window.__VATSIM_items.filter(i=>i.artccId === a.code);
+                  renderItems(matching);
                   // visually mark selected
                   Array.from(container.children).forEach(c=>c.style.opacity = '0.6');
                   btn.style.opacity = '1';
@@ -181,6 +173,24 @@
                 container.appendChild(btn);
               }
             }
+
+            function styleTile(btn){
+              btn.style.background = 'transparent';
+              btn.style.border = '1px solid rgba(255,255,255,0.06)';
+              btn.style.color = 'inherit';
+              btn.style.padding = '6px 10px';
+              btn.style.borderRadius = '8px';
+              btn.style.cursor = 'pointer';
+              btn.style.opacity = '0.8';
+            }
+
+            renderArtccTiles(tilesList);
+            // set default title to United States NAS and mark ALL
+            document.getElementById('artccTitle').textContent = 'United States NAS';
+            // set all opacity
+            const container = document.getElementById('artccTiles');
+            if(container && container.firstChild) Array.from(container.children).forEach(c=>c.style.opacity='0.6');
+            if(container && container.firstChild) container.firstChild.style.opacity = '1';
 
             // sort alphabetically by callsign
             window.__VATSIM_items.sort((a,b)=>a.callsign.localeCompare(b.callsign));
@@ -196,7 +206,8 @@
                 const right = document.createElement('div'); right.className = 'right';
                 const freq = document.createElement('div'); freq.className = 'freq';
                 if(it.frequency){
-                  const mhz = (it.frequency / 1e6).toFixed(3).replace(/\.([0-9]*?)0+$/,'.$1').replace(/\.$/, '');
+                  // Show frequency in MHz to thousandths (3 decimal places)
+                  const mhz = (it.frequency / 1e6).toFixed(3);
                   freq.textContent = `${mhz} MHz`;
                 } else {
                   freq.textContent = '';
@@ -215,20 +226,8 @@
 
             // initial render = all items
             renderItems(window.__VATSIM_items);
-            // hook filter change
+            // hook filter change is handled by ARTCC tiles now
             const artccTitle = document.getElementById('artccTitle');
-            document.getElementById('artccFilter').addEventListener('change', (e)=>{
-              const val = e.target.value;
-              if(val === 'ALL'){
-                artccTitle.textContent = '';
-                renderItems(window.__VATSIM_items);
-                return;
-              }
-              const matching = window.__VATSIM_items.filter(i=>i.artccId === val);
-              const meta = window.__VATSIM_artccs[val] || {code: val, displayName: val};
-              artccTitle.textContent = `${meta.displayName} - ${meta.code}`;
-              renderItems(matching);
-            });
           }
 
         }catch(err){

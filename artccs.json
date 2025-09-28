@@ -1,6 +1,7 @@
 [
-  { "code": "ZBW", "name": "Boston ATCT" },
-  { "code": "ZLA", "name": "Los Angeles ARTCC" },
+  { "code": "ZBW", "name": "Boston ARTCC" },
   { "code": "ZDV", "name": "Denver ARTCC" },
+  { "code": "ZHN", "name": "Honolulu ARTCC" },
+  { "code": "ZLA", "name": "Los Angeles ARTCC" },
   { "code": "ZME", "name": "Memphis ARTCC" }
 ]
