@@ -47,3 +47,14 @@ The UI will show the primary `code` on the tile but will filter items matching t
 ```
 
 When present, `index.html` will use the override for the callsign (case-insensitive) and display the abbreviation after the controller's name, e.g. "Jane Doe - S1".
+
+Deployment / build
+------------------
+
+This repo is a static site. To prepare a deployable `build/` folder (suitable for Cloudflare Pages), run:
+
+```powershell
+npm run build
+```
+
+That will create a `build/` directory containing `index.html`, `artccs.json` and `overrides.json`. In Cloudflare Pages set the build output directory to `build` and leave the build command empty (or use `npm run build` if you want Pages to run the build step).
