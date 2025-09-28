@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>VATSIM Controllers — Primary Positions</title>
+    <style>
+      :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;margin:0}
+      body{background:#0b1220;color:#e6eef8;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:24px}
+      .card{background:#0f1724;border:1px solid rgba(255,255,255,0.04);border-radius:10px;padding:18px;max-width:880px;width:100%;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+      h1{margin:0 0 12px;font-size:20px}
+      p.lead{margin:0 0 16px;color:#9fb0d6}
+      .controls{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+      button{background:#1f6feb;color:white;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
+      button[disabled]{opacity:0.6;cursor:default}
+      .muted{color:#99a8c6;font-size:13px}
+      ul.list{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+      li.item{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);display:flex;flex-direction:column;gap:6px}
+      .callsign{font-weight:700;color:#fff}
+      .position{font-size:13px;color:#aec6e8}
+      .meta{font-size:12px;color:#7f98bf}
+      .error{color:#ffb4b4;background:#3b0f0f;padding:10px;border-radius:8px}
+      .loading{color:#cde3ff}
+      footer{margin-top:12px;font-size:12px;color:#86a0cc}
+      @media (max-width:420px){.card{padding:12px}}
+    </style>
+  </head>
+  <body>
+    <main class="card" role="main">
+      <h1>VATSIM Controllers — Primary Positions</h1>
+      <p class="lead">Showing only primary positions from the live controllers feed.</p>
+
+      <div class="controls">
+        <button id="refresh">Refresh</button>
+        <div id="status" class="muted">Updated: —</div>
+      </div>
+
+      <div id="message" aria-live="polite"></div>
+      <ul id="list" class="list" aria-live="polite"></ul>
+
+      <footer>Data source: <a href="https://live.env.vnas.vatsim.net/data-feed/controllers.json" target="_blank" rel="noreferrer noopener" style="color:#9fc3ff">controllers.json</a></footer>
+    </main>
+
+    <script>
+  const UPSTREAM_URL = 'https://live.env.vnas.vatsim.net/data-feed/controllers.json';
+  const PROXY_URL = '/proxy/controllers.json'; // local proxy provided by server.js (optional)
+      const refreshBtn = document.getElementById('refresh');
+      const statusEl = document.getElementById('status');
+      const listEl = document.getElementById('list');
+      const msgEl = document.getElementById('message');
+
+      function showMessage(text, className){
+        msgEl.innerHTML = '';
+        if(!text) return;
+        const div = document.createElement('div');
+        div.textContent = text;
+        if(className) div.className = className;
+        msgEl.appendChild(div);
+      }
+
+      async function load(){
+        refreshBtn.disabled = true;
+        showMessage('Loading…', 'loading');
+        listEl.innerHTML = '';
+        try{
+          // Try local proxy first (if server.js is running). If it fails, fall back to upstream.
+          let res = null;
+          try{
+            res = await fetch(PROXY_URL, {cache: 'no-store'});
+          }catch(e){
+            // probe failed — will try upstream
+            res = null;
+          }
+
+          if(!res || !res.ok){
+            // fallback to upstream
+            res = await fetch(UPSTREAM_URL, {cache: 'no-store'});
+          }
+
+          if(!res.ok) throw new Error(`Network error: ${res.status} ${res.statusText}`);
+          const data = await res.json();
+
+          const updated = data.updatedAt || null;
+          statusEl.textContent = updated ? `Updated: ${new Date(updated).toLocaleString()}` : 'Updated: —';
+
+          const controllers = Array.isArray(data.controllers) ? data.controllers : [];
+
+          // Build list of primary positions
+          const items = [];
+          for(const c of controllers){
+            const positions = Array.isArray(c.positions) ? c.positions : [];
+            // primary may be flagged by isPrimary or by matching primaryPositionId
+            const primary = positions.find(p=>p.isPrimary) || positions.find(p=>p.positionId === c.primaryPositionId);
+            if(!primary) continue;
+
+            const callsign = (c.vatsimData && c.vatsimData.callsign) || primary.defaultCallsign || '';
+            const positionName = primary.positionName || primary.radioName || '';
+            const facilityName = primary.facilityName || c.primaryFacilityId || '';
+            const radioName = primary.radioName || '';
+            const frequency = typeof primary.frequency === 'number' ? primary.frequency : (primary.frequency ? Number(primary.frequency) : null);
+            items.push({callsign, positionName, facilityName, radioName, frequency});
+          }
+
+          if(items.length === 0){
+            showMessage('No primary positions found.', 'muted');
+          } else {
+            showMessage('', '');
+            // sort alphabetically by callsign
+            items.sort((a,b)=>a.callsign.localeCompare(b.callsign));
+            for(const it of items){
+              const li = document.createElement('li');
+              li.className = 'item';
+              const cs = document.createElement('div'); cs.className = 'callsign'; cs.textContent = it.callsign;
+              const pos = document.createElement('div'); pos.className = 'position'; pos.textContent = it.positionName;
+              const fac = document.createElement('div'); fac.className = 'meta'; fac.textContent = it.facilityName;
+              const radio = document.createElement('div'); radio.className = 'meta'; radio.textContent = it.radioName;
+              const freq = document.createElement('div'); freq.className = 'meta';
+              if(it.frequency){
+                // frequency is given as an integer in Hz (e.g. 121700000). Convert to MHz with 3 decimals where sensible
+                const mhz = (it.frequency / 1e6).toFixed(3).replace(/\.([0-9]*?)0+$/,'.$1').replace(/\.$/, '');
+                freq.textContent = `${mhz} MHz`;
+              } else {
+                freq.textContent = '';
+              }
+
+              li.appendChild(cs);
+              li.appendChild(pos);
+              if(fac.textContent) li.appendChild(fac);
+              if(radio.textContent) li.appendChild(radio);
+              if(freq.textContent) li.appendChild(freq);
+              listEl.appendChild(li);
+            }
+          }
+
+        }catch(err){
+          console.error(err);
+          // CORS and network errors are common when opening locally — show helpful hint
+          const isCors = /(CORS|cross-origin)/i.test(err.message) || err instanceof TypeError;
+          showMessage(isCors ? 'Could not fetch data (possible CORS or network issue). Try serving this page via a local HTTP server or use a proxy. See console for details.' : `Error: ${err.message}`, 'error');
+        } finally {
+          refreshBtn.disabled = false;
+        }
+      }
+
+      refreshBtn.addEventListener('click', ()=> load());
+      // initial load
+      load();
+    </script>
+  </body>
+</html>
