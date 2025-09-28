@@ -128,6 +128,8 @@
             const artccEntries = Object.values(window.__VATSIM_artccs).sort((a,b)=>a.code.localeCompare(b.code));
             // try to load artccs.json (editable config)
             let cfgList = null;
+            // Load overrides (optional) - mapping of callsign -> abbreviation
+            let overrides = {};
             try{
               const cfgRes = await fetch('/artccs.json');
               if(cfgRes.ok){
@@ -138,6 +140,14 @@
                 }
               }
             }catch(e){ /* ignore and fallback */ }
+
+            try{
+              const ovRes = await fetch('/overrides.json');
+              if(ovRes.ok){
+                const ov = await ovRes.json();
+                if(ov && typeof ov.overrides === 'object') overrides = ov.overrides;
+              }
+            }catch(e){ /* ignore */ }
 
             const tilesList = cfgList || artccEntries.map(a=>({code:a.code,name:a.displayName, aliases: []}));
             function renderArtccTiles(list){
@@ -205,7 +215,18 @@
                 const left = document.createElement('div'); left.className = 'left';
                   const radio = document.createElement('div'); radio.className = 'radio'; radio.textContent = it.radioName || it.positionName || '';
                   const facility = document.createElement('div'); facility.className = 'facility'; facility.textContent = it.facilityName || '';
-                  const real = document.createElement('div'); real.className = 'realname'; real.textContent = it.realName || '';
+                  // resolve abbreviation: first check overrides by callsign (case-insensitive), then fall back to any role in the feed
+                  let roleAbbr = '';
+                  try{
+                    const csKey = (it.callsign || '').toUpperCase();
+                    if(csKey && overrides[csKey]) roleAbbr = overrides[csKey];
+                    else if(it.positionName){
+                      // attempt to extract short role from positionName, e.g. "S1", "APP", etc. Simple heuristic: look for a token like S1 or APP
+                      const m = (it.positionName.match(/\b([A-Z]{2,4}\d?|S\d)\b/i) || []);
+                      if(m[1]) roleAbbr = m[1].toUpperCase();
+                    }
+                  }catch(e){ roleAbbr = ''; }
+                  const real = document.createElement('div'); real.className = 'realname'; real.textContent = it.realName ? (roleAbbr ? `${it.realName} - ${roleAbbr}` : it.realName) : '';
                 const right = document.createElement('div'); right.className = 'right';
                 const freq = document.createElement('div'); freq.className = 'freq';
                 if(it.frequency){

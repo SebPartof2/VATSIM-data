@@ -34,3 +34,16 @@ Notes
 ```
 
 The UI will show the primary `code` on the tile but will filter items matching the primary code or any `aliases`.
+
+- `overrides.json` is an optional file to map controller callsigns to short role abbreviations. Example:
+
+```json
+{
+	"overrides": {
+		"EXAMPLE1": "S1",
+		"EXAMPLE2": "APP"
+	}
+}
+```
+
+When present, `index.html` will use the override for the callsign (case-insensitive) and display the abbreviation after the controller's name, e.g. "Jane Doe - S1".
