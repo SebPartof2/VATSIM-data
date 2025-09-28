@@ -58,3 +58,10 @@ npm run build
 ```
 
 That will create a `build/` directory containing `index.html`, `artccs.json` and `overrides.json`. In Cloudflare Pages set the build output directory to `build` and leave the build command empty (or use `npm run build` if you want Pages to run the build step).
+
+Using a proxy on Cloudflare Pages
+--------------------------------
+
+If you deploy to Cloudflare Pages you can add a Pages Function at `functions/proxy/controllers.js` which will proxy the upstream `controllers.json` and add CORS headers. This lets the browser fetch `/proxy/controllers.json` from the same origin without CORS problems.
+
+I included a sample function in `functions/proxy/controllers.js`. When deployed, the client will first probe `/proxy/controllers.json` and fall back to the upstream URL if the proxy isn't available.
