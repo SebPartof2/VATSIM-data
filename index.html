@@ -79,6 +79,17 @@
           let res = null;
           try{
             res = await fetch(PROXY_URL, {cache: 'no-store'});
+            // If the Pages hosting or any middleware rewrites unknown paths to index.html
+            // you'll receive an HTML document (content-type text/html) with a 200 status.
+            // Guard against that by checking the Content-Type and treat non-JSON as a miss
+            // so we can fall back to the upstream endpoint.
+            if(res && res.ok){
+              const ct = (res.headers.get('content-type') || '').toLowerCase();
+              if(!ct.includes('application/json')){
+                console.warn('Proxy returned non-JSON response; falling back to upstream. Content-Type:', ct);
+                res = null;
+              }
+            }
           }catch(e){
             // probe failed — will try upstream
             res = null;
@@ -90,6 +101,11 @@
           }
 
           if(!res.ok) throw new Error(`Network error: ${res.status} ${res.statusText}`);
+          // ensure we only call res.json() for JSON responses (protects against HTML index.html being returned)
+          const ctFinal = (res.headers.get('content-type') || '').toLowerCase();
+          if(!ctFinal.includes('application/json')){
+            throw new Error(`Unexpected content-type when fetching controllers: ${ctFinal}`);
+          }
           const data = await res.json();
 
           const updated = data.updatedAt || null;
