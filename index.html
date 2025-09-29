@@ -137,7 +137,9 @@
             // capture requestedRating from a few possible feed fields (different feeds use different names)
             let requestedRatingRaw = primary.requestedRating || primary.requested_rating || primary.requestedRatingLevel || primary.requested_rating_level || primary.rating || (c.vatsimData && (c.vatsimData.requestedRating || c.vatsimData.rating)) || '';
             const requestedRating = requestedRatingRaw != null ? String(requestedRatingRaw).trim() : '';
-            window.__VATSIM_items.push({callsign, facilityName, radioName, frequency, realName, requestedRating, artccId: c.artccId, vatsimData: c.vatsimData});
+            // capture isObserver flag
+            const isObserver = c.isObserver === true;
+            window.__VATSIM_items.push({callsign, facilityName, radioName, frequency, realName, requestedRating, isObserver, artccId: c.artccId, vatsimData: c.vatsimData});
             // DEBUG: Log controllerInfo string if present
             if (c.vatsimData && typeof c.vatsimData.controllerInfo === 'string') {
               console.log('controllerInfo for', callsign, ':', c.vatsimData.controllerInfo);
@@ -280,7 +282,7 @@
 
                 // push into separate arrays so we can render observers last
                 const roleNorm = (roleAbbr || '').toString().toUpperCase().trim();
-                if(roleNorm.startsWith('OBS')){
+                if(it.isObserver){
                   observers.push({it, roleAbbr: roleNorm, roleSource});
                 } else {
                   normal.push({it, roleAbbr: roleNorm, roleSource});
