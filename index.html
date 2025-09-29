@@ -118,6 +118,12 @@
           window.__VATSIM_artccs = {}; // map artccId -> {code, displayName}
           for(const c of controllers){
             const positions = Array.isArray(c.positions) ? c.positions : [];
+             // DEBUG: Log controllerInfo for each controller
+            if (c.controllerInfo) {
+              console.log('controllerInfo for', c.vatsimData?.callsign || c.primaryPositionId || '[unknown]', c.controllerInfo);
+            } else if (positions.length && positions[0].controllerInfo) {
+              console.log('controllerInfo (from position) for', c.vatsimData?.callsign || c.primaryPositionId || '[unknown]', positions[0].controllerInfo);
+            }
             // primary may be flagged by isPrimary or by matching primaryPositionId
             const primary = positions.find(p=>p.isPrimary) || positions.find(p=>p.positionId === c.primaryPositionId);
             if(!primary) continue;
@@ -131,7 +137,11 @@
             // capture requestedRating from a few possible feed fields (different feeds use different names)
             let requestedRatingRaw = primary.requestedRating || primary.requested_rating || primary.requestedRatingLevel || primary.requested_rating_level || primary.rating || (c.vatsimData && (c.vatsimData.requestedRating || c.vatsimData.rating)) || '';
             const requestedRating = requestedRatingRaw != null ? String(requestedRatingRaw).trim() : '';
-            window.__VATSIM_items.push({callsign, facilityName, radioName, frequency, realName, requestedRating, artccId: c.artccId});
+            window.__VATSIM_items.push({callsign, facilityName, radioName, frequency, realName, requestedRating, artccId: c.artccId, vatsimData: c.vatsimData});
+            // DEBUG: Log controllerInfo string if present
+            if (c.vatsimData && typeof c.vatsimData.controllerInfo === 'string') {
+              console.log('controllerInfo for', callsign, ':', c.vatsimData.controllerInfo);
+            }
             // remember artcc display name by first observed facilityName
             if(c.artccId && !window.__VATSIM_artccs[c.artccId]){
               // try to get a friendly name from primary position or facilityName
@@ -285,6 +295,55 @@
                   const radio = document.createElement('div'); radio.className = 'radio'; radio.textContent = it.radioName || '';
                   const facility = document.createElement('div'); facility.className = 'facility'; facility.textContent = it.facilityName || '';
                   const real = document.createElement('div'); real.className = 'realname'; real.textContent = it.realName || '';
+                   // Info feature: show vatsimData.controllerInfo string as a tooltip on an info icon
+                  const infoText = (it.vatsimData && typeof it.vatsimData.controllerInfo === 'string') ? it.vatsimData.controllerInfo : '';
+                  if(infoText) {
+                    const infoIcon = document.createElement('span');
+                    infoIcon.textContent = 'ℹ️';
+                    infoIcon.style.cursor = 'pointer';
+                    infoIcon.style.marginLeft = '6px';
+                    infoIcon.style.fontSize = '14px';
+                    infoIcon.style.position = 'relative';
+
+                    // Custom tooltip
+                    const tooltip = document.createElement('div');
+
+                    // Auto-link URLs in infoText
+                    function linkify(text) {
+                      const urlRegex = /(https?:\/\/[^\s]+)/g;
+                      return text.replace(urlRegex, function(url) {
+                        return '<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#9fc3ff;text-decoration:underline">' + url + '</a>';
+                      });
+                    }
+                    tooltip.innerHTML = linkify(infoText).replace(/\n/g, '<br>');
+                    tooltip.style.position = 'absolute';
+                    tooltip.style.left = '20px';
+                    tooltip.style.top = '0';
+                    tooltip.style.background = '#222e44';
+                    tooltip.style.color = '#cfe4ff';
+                    tooltip.style.padding = '8px 12px';
+                    tooltip.style.borderRadius = '8px';
+                    tooltip.style.boxShadow = '0 2px 8px rgba(0,0,0,0.18)';
+                    tooltip.style.fontSize = '13px';
+                    tooltip.style.zIndex = '100';
+                    tooltip.style.whiteSpace = 'pre-line';
+                    tooltip.style.display = 'none';
+
+                    infoIcon.addEventListener('mouseenter', () => {
+                      tooltip.style.display = 'block';
+                    });
+                    infoIcon.addEventListener('mouseleave', () => {
+                      tooltip.style.display = 'none';
+                    });
+                    infoIcon.appendChild(tooltip);
+
+                    // Add the icon next to the real name
+                    if(real.textContent) {
+                      real.appendChild(infoIcon);
+                    } else {
+                      left.appendChild(infoIcon);
+                    }
+                  }
                   // create role badge
                   const roleBadge = document.createElement('span'); roleBadge.className = 'role-badge'; roleBadge.textContent = roleAbbr || '';
                   if(roleSource) roleBadge.title = roleSource === 'override' ? 'override' : 'feed';
